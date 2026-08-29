@@ -39,7 +39,7 @@ export default function TakeExamPage() {
 
     const init = async () => {
       try {
-        const startRes = await fetch('http://localhost:5001/api/attempts/start', {
+        const startRes = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/attempts/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ exam_id: Number(examId) }),
@@ -53,7 +53,7 @@ export default function TakeExamPage() {
         setAttemptId(startData.attempt_id);
         setTimeLeft(startData.duration_minutes * 60);
 
-        const qRes = await fetch(`http://localhost:5001/api/questions/exam/${examId}`);
+        const qRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/questions/exam/${examId}`);
         const qData = await qRes.json();
         if (qData.success) setQuestions(qData.questions);
       } catch {
@@ -78,7 +78,7 @@ export default function TakeExamPage() {
     }));
 
     try {
-      await fetch(`http://localhost:5001/api/attempts/${attemptId}/submit`, {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/attempts/${attemptId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ answers: answersPayload }),

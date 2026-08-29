@@ -25,7 +25,7 @@ export default function ResultPage() {
       router.push('/login');
       return;
     }
-    fetch(`http://localhost:5001/api/attempts/${attemptId}/result`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/attempts/${attemptId}/result`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())

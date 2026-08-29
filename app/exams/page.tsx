@@ -23,7 +23,7 @@ export default function ExamsPage() {
       router.push('/login');
       return;
     }
-    fetch('http://localhost:5001/api/exams')
+    fetch('${process.env.NEXT_PUBLIC_API_URL}/api/exams')
       .then((res) => res.json())
       .then((data) => {
         if (data.success) setExams(data.exams);
