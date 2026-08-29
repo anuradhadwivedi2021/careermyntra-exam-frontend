@@ -23,7 +23,7 @@ export default function ExamsPage() {
       router.push('/login');
       return;
     }
-    fetch('${process.env.NEXT_PUBLIC_API_URL}/api/exams')
+    fetch('https://careermyntra-exam-backend.onrender.com/api/exams')
       .then((res) => res.json())
       .then((data) => {
         if (data.success) setExams(data.exams);

@@ -25,7 +25,7 @@ export default function ResultPage() {
       router.push('/login');
       return;
     }
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/attempts/${attemptId}/result`, {
+    fetch(`https://careermyntra-exam-backend.onrender.com/api/attempts/${attemptId}/result`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
