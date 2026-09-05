@@ -33,6 +33,8 @@ export default function DashboardPage() {
   const router = useRouter();
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [exams, setExams] = useState<Exam[]>([]);
+  const [registeredIds, setRegisteredIds] = useState<Set<number>>(new Set());
+  const [registeringId, setRegisteringId] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [loadingExams, setLoadingExams] = useState(true);
   const [loadingAttempts, setLoadingAttempts] = useState(true);
@@ -47,9 +49,18 @@ export default function DashboardPage() {
     const parsed: Candidate = JSON.parse(stored);
     setCandidate(parsed);
 
-    fetch('https://careermyntra-exam-backend.onrender.com/api/exams')
-      .then((res) => res.json())
-      .then((data) => { if (data.success) setExams(data.exams.slice(0, 3)); })
+    Promise.all([
+      fetch('https://careermyntra-exam-backend.onrender.com/api/exams').then((res) => res.json()),
+      fetch('https://careermyntra-exam-backend.onrender.com/api/registrations/my', {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((res) => res.json()),
+    ])
+      .then(([examData, regData]) => {
+        if (examData.success) setExams(examData.exams.slice(0, 3));
+        if (regData.success) {
+          setRegisteredIds(new Set(regData.registrations.map((r: { exam_id: number }) => r.exam_id)));
+        }
+      })
       .finally(() => setLoadingExams(false));
 
     fetch(`https://careermyntra-exam-backend.onrender.com/api/reports/student/${parsed.candidate_id}`, {
@@ -59,6 +70,24 @@ export default function DashboardPage() {
       .then((data) => { if (data.success) setAttempts(data.attempts); })
       .finally(() => setLoadingAttempts(false));
   }, [router]);
+
+  const handleRegister = async (examId: number) => {
+    setRegisteringId(examId);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('https://careermyntra-exam-backend.onrender.com/api/registrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ exam_id: examId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRegisteredIds((prev) => new Set(prev).add(examId));
+      }
+    } finally {
+      setRegisteringId(null);
+    }
+  };
 
   const submitted = attempts.filter((a) => a.status === 'submitted' && a.percentage !== null);
   const totalAttempts = attempts.length;
@@ -131,24 +160,39 @@ export default function DashboardPage() {
           <p className="text-sm text-[var(--color-ink-muted)] mb-8">No exams available right now.</p>
         ) : (
           <div className="space-y-3 mb-8">
-            {exams.map((exam) => (
-              <div key={exam.exam_id} className="bg-white border border-[var(--color-border)] rounded-2xl p-5 flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="font-display font-bold mb-1">{exam.exam_name}</h3>
-                  <div className="flex gap-4 text-xs text-[var(--color-ink-muted)]">
-                    <span>{exam.duration_minutes} min</span>
-                    <span>{exam.total_marks} marks</span>
-                    <span className={exam.is_free ? 'text-[var(--color-success)]' : ''}>{exam.is_free ? 'Free' : 'Paid'}</span>
+            {exams.map((exam) => {
+              const isRegistered = registeredIds.has(exam.exam_id);
+              const isRegistering = registeringId === exam.exam_id;
+              return (
+                <div key={exam.exam_id} className="bg-white border border-[var(--color-border)] rounded-2xl p-5 flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-display font-bold mb-1">{exam.exam_name}</h3>
+                    <div className="flex gap-4 text-xs text-[var(--color-ink-muted)]">
+                      <span>{exam.duration_minutes} min</span>
+                      <span>{exam.total_marks} marks</span>
+                      <span className={exam.is_free ? 'text-[var(--color-success)]' : ''}>{exam.is_free ? 'Free' : 'Paid'}</span>
+                      {isRegistered && <span className="text-[var(--color-success)]">Registered</span>}
+                    </div>
                   </div>
+                  {isRegistered ? (
+                    <button
+                      onClick={() => router.push(`/exams/${exam.exam_id}/take`)}
+                      className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shrink-0"
+                    >
+                      Start exam
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleRegister(exam.exam_id)}
+                      disabled={isRegistering}
+                      className="bg-[var(--color-primary-dark)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 shrink-0"
+                    >
+                      {isRegistering ? 'Registering…' : 'Register'}
+                    </button>
+                  )}
                 </div>
-                <button
-                  onClick={() => router.push(`/exams/${exam.exam_id}/take`)}
-                  className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shrink-0"
-                >
-                  Start exam
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
