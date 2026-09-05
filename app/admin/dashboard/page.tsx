@@ -16,17 +16,39 @@ export default function AdminDashboardPage() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const loadExams = () => {
+    const token = localStorage.getItem('admin_token');
+    fetch('https://careermyntra-exam-backend.onrender.com/api/exams/admin/all', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => { if (data.success) setExams(data.exams); })
+      .finally(() => setLoading(false));
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
     if (!token) {
       router.push('/admin/login');
       return;
     }
-    fetch('https://careermyntra-exam-backend.onrender.com/api/exams')
-      .then((res) => res.json())
-      .then((data) => { if (data.success) setExams(data.exams); })
-      .finally(() => setLoading(false));
+    loadExams();
   }, [router]);
+
+  const handleDelete = async (examId: number, examName: string) => {
+    if (!confirm(`Delete "${examName}"? This cannot be undone.`)) return;
+    const token = localStorage.getItem('admin_token');
+    const res = await fetch(`https://careermyntra-exam-backend.onrender.com/api/exams/${examId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.success) {
+      setExams((prev) => prev.filter((e) => e.exam_id !== examId));
+    } else {
+      alert(data.message || 'Could not delete exam');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] px-6 py-10">
@@ -56,26 +78,23 @@ export default function AdminDashboardPage() {
                   <div className="flex gap-4 text-xs text-[var(--color-ink-muted)]">
                     <span>{exam.duration_minutes} min</span>
                     <span>{exam.total_marks} marks</span>
-                    <span className="text-[var(--color-success)]">{exam.status}</span>
+                    <span className={exam.status === 'published' ? 'text-[var(--color-success)]' : 'text-[var(--color-accent)]'}>{exam.status}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => router.push(`/admin/exams/${exam.exam_id}/questions`)}
-                  className="text-sm font-medium text-[var(--color-primary)] hover:underline"
-                >
-                  Manage questions →
-                </button>
-
-                <button
-                onClick={() => router.push(`/admin/exams/${exam.exam_id}/report`)}
-                className="text-sm font-medium text-[var(--color-ink-muted)] hover:underline block mt-1"
->
-                  View report →
-                </button>
-
-
-
-
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <button onClick={() => router.push(`/admin/exams/${exam.exam_id}/edit`)} className="text-sm font-medium text-[var(--color-primary)] hover:underline">
+                    Edit
+                  </button>
+                  <button onClick={() => router.push(`/admin/exams/${exam.exam_id}/questions`)} className="text-sm font-medium text-[var(--color-primary)] hover:underline">
+                    Manage questions →
+                  </button>
+                  <button onClick={() => router.push(`/admin/exams/${exam.exam_id}/report`)} className="text-sm font-medium text-[var(--color-ink-muted)] hover:underline">
+                    View report →
+                  </button>
+                  <button onClick={() => handleDelete(exam.exam_id, exam.exam_name)} className="text-sm font-medium text-[var(--color-danger)] hover:underline">
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
