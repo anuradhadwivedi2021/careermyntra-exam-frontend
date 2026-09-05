@@ -11,7 +11,7 @@ export default function EditExamPage() {
   const [form, setForm] = useState({
     exam_name: '', description: '', instructions: '',
     duration_minutes: 30, total_marks: 10, passing_marks: 4,
-    negative_marking: false, attempt_limit: 1, is_free: true, status: 'published',
+    negative_marking: false, attempt_limit: 1, is_free: true, price: 0, status: 'published',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,7 +26,8 @@ export default function EditExamPage() {
           setForm({
             exam_name: e.exam_name, description: e.description || '', instructions: e.instructions || '',
             duration_minutes: e.duration_minutes, total_marks: e.total_marks, passing_marks: e.passing_marks || 0,
-            negative_marking: e.negative_marking, attempt_limit: e.attempt_limit, is_free: e.is_free, status: e.status,
+            negative_marking: e.negative_marking, attempt_limit: e.attempt_limit, is_free: e.is_free,
+            price: e.price || 0, status: e.status,
           });
         }
       })
@@ -125,6 +126,15 @@ export default function EditExamPage() {
               </label>
             </div>
           </div>
+
+          {!form.is_free && (
+            <div>
+              <label className="text-sm font-medium block mb-1.5">Price (₹)</label>
+              <input name="price" type="number" min="0" step="1" value={form.price} onChange={handleChange}
+                placeholder="e.g. 99"
+                className="w-full rounded-lg border border-[var(--color-border)] px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]" />
+            </div>
+          )}
 
           {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
 
