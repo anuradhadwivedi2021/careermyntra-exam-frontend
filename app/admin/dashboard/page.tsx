@@ -65,6 +65,17 @@ export default function AdminDashboardPage() {
                 >
                   Manage questions →
                 </button>
+
+                <button
+                onClick={() => router.push(`/admin/exams/${exam.exam_id}/report`)}
+                className="text-sm font-medium text-[var(--color-ink-muted)] hover:underline block mt-1"
+>
+                  View report →
+                </button>
+
+
+
+
               </div>
             ))}
           </div>
