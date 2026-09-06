@@ -1,24 +1,37 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 
-interface Exam {
-  exam_id: number;
-  exam_name: string;
-  description: string;
-  duration_minutes: number;
-  total_marks: number;
-  is_free: boolean;
+interface Option {
+  option_id: number;
+  option_text: string;
 }
 
-export default function ExamsPage() {
+interface Question {
+  question_id: number;
+  question_text: string;
+  marks: string;
+  options: Option[];
+  question_type: 'mcq' | 'subjective';
+  word_limit: number | null;
+}
+
+export default function TakeExamPage() {
+  const params = useParams();
   const router = useRouter();
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [registeredIds, setRegisteredIds] = useState<Set<number>>(new Set());
-  const [registeringId, setRegisteringId] = useState<number | null>(null);
+  const examId = params.examId as string;
+
+  const [attemptId, setAttemptId] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [textAnswers, setTextAnswers] = useState<Record<number, string>>({});
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -27,94 +40,218 @@ export default function ExamsPage() {
       return;
     }
 
-    Promise.all([
-      fetch('https://careermyntra-exam-backend.onrender.com/api/exams').then((res) => res.json()),
-      fetch('https://careermyntra-exam-backend.onrender.com/api/registrations/my', {
-        headers: { Authorization: `Bearer ${token}` },
-      }).then((res) => res.json()),
-    ])
-      .then(([examData, regData]) => {
-        if (examData.success) setExams(examData.exams);
-        if (regData.success) {
-          setRegisteredIds(new Set(regData.registrations.map((r: { exam_id: number }) => r.exam_id)));
+    const init = async () => {
+      try {
+        const startRes = await fetch('https://careermyntra-exam-backend.onrender.com/api/attempts/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ exam_id: Number(examId) }),
+        });
+        const startData = await startRes.json();
+        if (!startData.success) {
+          setError(startData.message || 'Could not start exam');
+          setLoading(false);
+          return;
         }
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+        setAttemptId(startData.attempt_id);
+        setTimeLeft(startData.duration_minutes * 60);
 
-  const handleRegister = async (examId: number) => {
-    setError('');
-    setRegisteringId(examId);
+        const qRes = await fetch(`https://careermyntra-exam-backend.onrender.com/api/questions/exam/${examId}`);
+        const qData = await qRes.json();
+        if (qData.success) setQuestions(qData.questions);
+      } catch {
+        setError('Could not reach server.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+  }, [examId, router]);
+
+  const handleSubmit = useCallback(async () => {
+    if (submittedRef.current || !attemptId) return;
+    submittedRef.current = true;
+    setSubmitting(true);
+
     const token = localStorage.getItem('token');
+    const mcqPayload = Object.entries(answers).map(([question_id, selected_option_id]) => ({
+      question_id: Number(question_id),
+      selected_option_id,
+    }));
+    const subjectivePayload = Object.entries(textAnswers)
+      .filter(([, text]) => text.trim().length > 0)
+      .map(([question_id, answer_text]) => ({
+        question_id: Number(question_id),
+        answer_text,
+      }));
+
     try {
-      const res = await fetch('https://careermyntra-exam-backend.onrender.com/api/registrations', {
+      await fetch(`https://careermyntra-exam-backend.onrender.com/api/attempts/${attemptId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ exam_id: examId }),
+        body: JSON.stringify({ answers: [...mcqPayload, ...subjectivePayload] }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setRegisteredIds((prev) => new Set(prev).add(examId));
-      } else {
-        setError(data.message || 'Could not register for this exam');
-      }
+      router.push(`/attempts/${attemptId}/result`);
     } catch {
-      setError('Could not reach server. Try again.');
-    } finally {
-      setRegisteringId(null);
+      setError('Could not submit. Check your connection and try again.');
+      submittedRef.current = false;
+      setSubmitting(false);
     }
+  }, [attemptId, answers, textAnswers, router]);
+
+  useEffect(() => {
+    if (timeLeft === null) return;
+    if (timeLeft <= 0) {
+      handleSubmit();
+      return;
+    }
+    const timer = setInterval(() => setTimeLeft((t) => (t !== null ? t - 1 : t)), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, handleSubmit]);
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const selectOption = (questionId: number, optionId: number) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: optionId }));
+  };
+
+  const updateTextAnswer = (questionId: number, text: string) => {
+    setTextAnswers((prev) => ({ ...prev, [questionId]: text }));
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#F6F8FC] flex items-center justify-center"><p className="text-sm text-[var(--color-ink-muted)]">Loading exam…</p></div>;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#F6F8FC] flex items-center justify-center px-6">
+        <div className="bg-white border border-[var(--color-border)] rounded-2xl p-8 max-w-sm text-center">
+          <p className="text-sm text-[var(--color-danger)] mb-4">{error}</p>
+          <button onClick={() => router.push('/exams')} className="text-sm text-[var(--color-primary)] font-medium">Back to exams</button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentQuestion = questions[currentIndex];
+  const answeredCount = Object.keys(answers).length + Object.values(textAnswers).filter((t) => t.trim().length > 0).length;
+  const wordCount = currentQuestion && currentQuestion.question_type === 'subjective'
+    ? (textAnswers[currentQuestion.question_id] || '').trim().split(/\s+/).filter(Boolean).length
+    : 0;
+
   return (
-    <div className="min-h-screen bg-[#F6F8FC] px-6 py-10">
-      <div className="max-w-3xl mx-auto">
-        <img src="/logo.jpeg" alt="CareerMyntra" className="h-7 w-auto brightness-0 invert" />
-        <h1 className="font-display text-2xl font-bold mb-6">Available exams</h1>
+    <div className="min-h-screen bg-[#F6F8FC] flex flex-col">
+      <div className="bg-[var(--color-primary)] text-white px-6 py-3 flex items-center justify-between sticky top-0 z-10">
+        <div className="font-display font-bold text-sm sm:text-base">CAREERMYNTRA</div>
+        <div className="flex items-center gap-2 bg-white/15 rounded-full px-4 py-1.5">
+          <span className="text-xs uppercase tracking-wide text-white/70">Time left</span>
+          <span className="font-display font-bold text-sm">{timeLeft !== null ? formatTime(timeLeft) : '--:--:--'}</span>
+        </div>
+      </div>
 
-        {error && <p className="text-sm text-[var(--color-danger)] mb-4">{error}</p>}
+      <div className="flex-1 max-w-4xl w-full mx-auto px-6 py-8 grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-6">
+        <div className="bg-white border border-[var(--color-border)] rounded-2xl p-6">
+          {currentQuestion ? (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-medium text-[var(--color-ink-muted)]">Question {currentIndex + 1} of {questions.length}</span>
+                <span className="text-xs font-medium text-[var(--color-primary)]">{currentQuestion.marks} marks</span>
+              </div>
+              <h2 className="font-display text-lg font-semibold mb-6">{currentQuestion.question_text}</h2>
 
-        {loading ? (
-          <p className="text-sm text-[var(--color-ink-muted)]">Loading exams…</p>
-        ) : exams.length === 0 ? (
-          <p className="text-sm text-[var(--color-ink-muted)]">No exams available right now.</p>
-        ) : (
-          <div className="space-y-4">
-            {exams.map((exam) => {
-              const isRegistered = registeredIds.has(exam.exam_id);
-              const isRegistering = registeringId === exam.exam_id;
-              return (
-                <div key={exam.exam_id} className="bg-white border border-[var(--color-border)] rounded-2xl p-6 flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="font-display text-lg font-bold mb-1">{exam.exam_name}</h2>
-                    <p className="text-sm text-[var(--color-ink-muted)] mb-2">{exam.description}</p>
-                    <div className="flex gap-4 text-xs text-[var(--color-ink-muted)]">
-                      <span>{exam.duration_minutes} min</span>
-                      <span>{exam.total_marks} marks</span>
-                      <span className={exam.is_free ? 'text-[var(--color-success)]' : ''}>{exam.is_free ? 'Free' : 'Paid'}</span>
-                      {isRegistered && <span className="text-[var(--color-success)]">Registered</span>}
-                    </div>
+              {currentQuestion.question_type === 'subjective' ? (
+                <div>
+                  <textarea
+                    value={textAnswers[currentQuestion.question_id] || ''}
+                    onChange={(e) => updateTextAnswer(currentQuestion.question_id, e.target.value)}
+                    rows={8}
+                    placeholder="Type your answer here…"
+                    className="w-full rounded-xl border-2 border-[var(--color-border)] px-4 py-3 text-sm outline-none focus:border-[var(--color-primary)] resize-none"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-[var(--color-ink-muted)]">This answer will be manually evaluated.</p>
+                    <p className="text-xs text-[var(--color-ink-muted)]">
+                      {wordCount}{currentQuestion.word_limit ? ` / ${currentQuestion.word_limit}` : ''} words
+                    </p>
                   </div>
-                  {isRegistered ? (
-                    <button
-                      onClick={() => router.push(`/exams/${exam.exam_id}/take`)}
-                      className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shrink-0"
-                    >
-                      Start exam
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleRegister(exam.exam_id)}
-                      disabled={isRegistering}
-                      className="bg-[var(--color-primary-dark)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 shrink-0"
-                    >
-                      {isRegistering ? 'Registering…' : 'Register'}
-                    </button>
-                  )}
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  {currentQuestion.options.map((opt, i) => {
+                    const selected = answers[currentQuestion.question_id] === opt.option_id;
+                    return (
+                      <button
+                        key={opt.option_id}
+                        onClick={() => selectOption(currentQuestion.question_id, opt.option_id)}
+                        className={`w-full flex items-center gap-3 text-left border-2 rounded-xl px-4 py-3 text-sm transition-colors ${
+                          selected ? 'border-[var(--color-primary)] bg-[var(--color-primary-light)]' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/40'
+                        }`}
+                      >
+                        <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-semibold shrink-0 ${
+                          selected ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white' : 'border-[var(--color-border)] text-[var(--color-ink-muted)]'
+                        }`}>
+                          {String.fromCharCode(65 + i)}
+                        </span>
+                        {opt.option_text}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mt-8">
+                <button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}
+                  className="text-sm font-medium text-[var(--color-ink-muted)] disabled:opacity-40">← Previous</button>
+                {currentIndex < questions.length - 1 ? (
+                  <button onClick={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
+                    className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors">
+                    Next →
+                  </button>
+                ) : (
+                  <button onClick={handleSubmit} disabled={submitting}
+                    className="bg-[var(--color-success)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60">
+                    {submitting ? 'Submitting…' : 'Submit exam'}
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-[var(--color-ink-muted)]">No questions found for this exam.</p>
+          )}
+        </div>
+
+        <div className="bg-white border border-[var(--color-border)] rounded-2xl p-5 h-fit">
+          <p className="text-xs font-medium text-[var(--color-ink-muted)] mb-3">{answeredCount} of {questions.length} answered</p>
+          <div className="grid grid-cols-5 sm:grid-cols-4 gap-2 mb-4">
+            {questions.map((q, i) => {
+              const isAnswered = q.question_type === 'subjective'
+                ? (textAnswers[q.question_id] || '').trim().length > 0
+                : answers[q.question_id] !== undefined;
+              const isCurrent = i === currentIndex;
+              return (
+                <button key={q.question_id} onClick={() => setCurrentIndex(i)}
+                  className={`w-9 h-9 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors ${
+                    isCurrent ? 'bg-[var(--color-primary)] text-white' :
+                    isAnswered ? 'bg-[var(--color-success)]/15 text-[var(--color-success)] border border-[var(--color-success)]/30' :
+                    'bg-[#F6F8FC] text-[var(--color-ink-muted)] border border-[var(--color-border)]'
+                  }`}>
+                  {i + 1}
+                </button>
               );
             })}
           </div>
-        )}
+          <button onClick={handleSubmit} disabled={submitting}
+            className="w-full bg-[var(--color-primary-dark)] text-white rounded-lg py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60">
+            {submitting ? 'Submitting…' : 'Submit exam'}
+          </button>
+        </div>
       </div>
     </div>
   );

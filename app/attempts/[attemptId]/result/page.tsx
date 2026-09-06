@@ -11,6 +11,7 @@ interface ResultData {
   total_score: string;
   percentage: string;
   rank: number | null;
+  needs_evaluation: boolean;
 }
 
 export default function ResultPage() {
@@ -44,6 +45,13 @@ export default function ResultPage() {
       <div className="bg-white border border-[var(--color-border)] rounded-2xl p-8 max-w-md w-full">
         <img src="/logo.jpeg" alt="CareerMyntra" className="h-9 w-auto mx-auto mb-1" />
         <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)] text-center mb-6">Performance Report</p>
+
+        {result.needs_evaluation && (
+          <div className="bg-[#FFF7E6] border border-[#F5C542]/40 rounded-xl px-4 py-3 mb-6 text-center">
+            <p className="text-sm font-semibold text-[#9A6B00]">Pending evaluation</p>
+            <p className="text-xs text-[#9A6B00]/80 mt-0.5">This exam has subjective answers awaiting manual evaluation. Score and rank below are provisional.</p>
+          </div>
+        )}
 
         <div className="flex flex-col items-center mb-8">
           <div className="relative w-32 h-32 mb-3">

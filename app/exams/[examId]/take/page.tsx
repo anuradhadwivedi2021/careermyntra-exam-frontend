@@ -13,6 +13,8 @@ interface Question {
   question_text: string;
   marks: string;
   options: Option[];
+  question_type: 'mcq' | 'subjective';
+  word_limit: number | null;
 }
 
 export default function TakeExamPage() {
@@ -23,6 +25,7 @@ export default function TakeExamPage() {
   const [attemptId, setAttemptId] = useState<number | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [textAnswers, setTextAnswers] = useState<Record<number, string>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,16 +75,22 @@ export default function TakeExamPage() {
     setSubmitting(true);
 
     const token = localStorage.getItem('token');
-    const answersPayload = Object.entries(answers).map(([question_id, selected_option_id]) => ({
+    const mcqPayload = Object.entries(answers).map(([question_id, selected_option_id]) => ({
       question_id: Number(question_id),
       selected_option_id,
     }));
+    const subjectivePayload = Object.entries(textAnswers)
+      .filter(([, text]) => text.trim().length > 0)
+      .map(([question_id, answer_text]) => ({
+        question_id: Number(question_id),
+        answer_text,
+      }));
 
     try {
       await fetch(`https://careermyntra-exam-backend.onrender.com/api/attempts/${attemptId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ answers: answersPayload }),
+        body: JSON.stringify({ answers: [...mcqPayload, ...subjectivePayload] }),
       });
       router.push(`/attempts/${attemptId}/result`);
     } catch {
@@ -89,7 +98,7 @@ export default function TakeExamPage() {
       submittedRef.current = false;
       setSubmitting(false);
     }
-  }, [attemptId, answers, router]);
+  }, [attemptId, answers, textAnswers, router]);
 
   useEffect(() => {
     if (timeLeft === null) return;
@@ -112,6 +121,10 @@ export default function TakeExamPage() {
     setAnswers((prev) => ({ ...prev, [questionId]: optionId }));
   };
 
+  const updateTextAnswer = (questionId: number, text: string) => {
+    setTextAnswers((prev) => ({ ...prev, [questionId]: text }));
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-[#F6F8FC] flex items-center justify-center"><p className="text-sm text-[var(--color-ink-muted)]">Loading exam…</p></div>;
   }
@@ -128,7 +141,10 @@ export default function TakeExamPage() {
   }
 
   const currentQuestion = questions[currentIndex];
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = Object.keys(answers).length + Object.values(textAnswers).filter((t) => t.trim().length > 0).length;
+  const wordCount = currentQuestion && currentQuestion.question_type === 'subjective'
+    ? (textAnswers[currentQuestion.question_id] || '').trim().split(/\s+/).filter(Boolean).length
+    : 0;
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] flex flex-col">
@@ -150,27 +166,45 @@ export default function TakeExamPage() {
               </div>
               <h2 className="font-display text-lg font-semibold mb-6">{currentQuestion.question_text}</h2>
 
-              <div className="space-y-3">
-                {currentQuestion.options.map((opt, i) => {
-                  const selected = answers[currentQuestion.question_id] === opt.option_id;
-                  return (
-                    <button
-                      key={opt.option_id}
-                      onClick={() => selectOption(currentQuestion.question_id, opt.option_id)}
-                      className={`w-full flex items-center gap-3 text-left border-2 rounded-xl px-4 py-3 text-sm transition-colors ${
-                        selected ? 'border-[var(--color-primary)] bg-[var(--color-primary-light)]' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/40'
-                      }`}
-                    >
-                      <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-semibold shrink-0 ${
-                        selected ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white' : 'border-[var(--color-border)] text-[var(--color-ink-muted)]'
-                      }`}>
-                        {String.fromCharCode(65 + i)}
-                      </span>
-                      {opt.option_text}
-                    </button>
-                  );
-                })}
-              </div>
+              {currentQuestion.question_type === 'subjective' ? (
+                <div>
+                  <textarea
+                    value={textAnswers[currentQuestion.question_id] || ''}
+                    onChange={(e) => updateTextAnswer(currentQuestion.question_id, e.target.value)}
+                    rows={8}
+                    placeholder="Type your answer here…"
+                    className="w-full rounded-xl border-2 border-[var(--color-border)] px-4 py-3 text-sm outline-none focus:border-[var(--color-primary)] resize-none"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-[var(--color-ink-muted)]">This answer will be manually evaluated.</p>
+                    <p className="text-xs text-[var(--color-ink-muted)]">
+                      {wordCount}{currentQuestion.word_limit ? ` / ${currentQuestion.word_limit}` : ''} words
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {currentQuestion.options.map((opt, i) => {
+                    const selected = answers[currentQuestion.question_id] === opt.option_id;
+                    return (
+                      <button
+                        key={opt.option_id}
+                        onClick={() => selectOption(currentQuestion.question_id, opt.option_id)}
+                        className={`w-full flex items-center gap-3 text-left border-2 rounded-xl px-4 py-3 text-sm transition-colors ${
+                          selected ? 'border-[var(--color-primary)] bg-[var(--color-primary-light)]' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/40'
+                        }`}
+                      >
+                        <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-semibold shrink-0 ${
+                          selected ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white' : 'border-[var(--color-border)] text-[var(--color-ink-muted)]'
+                        }`}>
+                          {String.fromCharCode(65 + i)}
+                        </span>
+                        {opt.option_text}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="flex items-center justify-between mt-8">
                 <button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}
@@ -197,7 +231,9 @@ export default function TakeExamPage() {
           <p className="text-xs font-medium text-[var(--color-ink-muted)] mb-3">{answeredCount} of {questions.length} answered</p>
           <div className="grid grid-cols-5 sm:grid-cols-4 gap-2 mb-4">
             {questions.map((q, i) => {
-              const isAnswered = answers[q.question_id] !== undefined;
+              const isAnswered = q.question_type === 'subjective'
+                ? (textAnswers[q.question_id] || '').trim().length > 0
+                : answers[q.question_id] !== undefined;
               const isCurrent = i === currentIndex;
               return (
                 <button key={q.question_id} onClick={() => setCurrentIndex(i)}

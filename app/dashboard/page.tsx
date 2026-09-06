@@ -55,12 +55,20 @@ export default function AdminDashboardPage() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <img src="/logo.jpeg" alt="CareerMyntra" className="h-9 w-auto" />
-          <button
-            onClick={() => router.push('/admin/exams/create')}
-            className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors"
-          >
-            + Create Exam
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/admin/evaluations')}
+              className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+            >
+              Evaluation queue
+            </button>
+            <button
+              onClick={() => router.push('/admin/exams/create')}
+              className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors"
+            >
+              + Create Exam
+            </button>
+          </div>
         </div>
 
         <h1 className="font-display text-2xl font-bold mb-6">All exams</h1>
