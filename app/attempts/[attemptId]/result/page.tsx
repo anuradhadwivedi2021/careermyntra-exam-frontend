@@ -10,6 +10,7 @@ interface ResultData {
   unattempted_count: number;
   total_score: string;
   percentage: string;
+  rank: number | null;
 }
 
 export default function ResultPage() {
@@ -54,6 +55,9 @@ export default function ResultPage() {
             <div className="absolute inset-0 flex items-center justify-center font-display text-2xl font-bold">{result.percentage}%</div>
           </div>
           <p className="text-sm text-[var(--color-ink-muted)]">Score: {result.total_score} marks</p>
+          {result.rank && (
+            <p className="text-sm font-semibold text-[var(--color-primary)] mt-1">Rank #{result.rank}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-6">
