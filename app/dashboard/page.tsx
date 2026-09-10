@@ -176,7 +176,7 @@ export default function DashboardPage() {
                   </div>
                   {isRegistered ? (
                     <button
-                      onClick={() => router.push(`/exams/${exam.exam_id}/take`)}
+                      onClick={() => router.push(`/exams/${exam.exam_id}/instructions`)}
                       className="bg-[var(--color-primary)] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[var(--color-primary-dark)] transition-colors shrink-0"
                     >
                       Start exam
